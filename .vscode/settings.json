@@ -11,5 +11,8 @@
     "json",
     "json5",
     "jsonc"
+  ],
+  "cSpell.words": [
+    "genai"
   ]
 }
