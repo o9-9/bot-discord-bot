@@ -1,3 +1,4 @@
+import type { GenerateContentConfig } from '@google/genai'
 import type { CommandInteraction, CreateApplicationCommandOptions } from 'oceanic.js'
 import { GoogleGenAI } from '@google/genai'
 import { env } from 'bun'
@@ -45,18 +46,20 @@ export const description: CreateApplicationCommandOptions = {
 }
 
 export async function handler(interaction: CommandInteraction) {
+  interaction.defer()
+
   const input = interaction.data.options.getStringOption('input', true)
   const model = interaction.data.options.getStringOption('model')?.value ?? 'gemini-2.0-flash'
 
-  interaction.defer()
+  const config: GenerateContentConfig = {
+    systemInstruction: 'use discord markdown, try to keep your response concise and under 2000 characters',
+  }
+  if (model !== 'gemini-2.0-flash')
+    config.thinkingConfig = { includeThoughts: true, thinkingBudget: 2_048 }
 
   let respText = await ai.models.generateContent({
     model,
-    config: {
-      systemInstruction: 'use discord markdown, try to keep your response under 2000 characters',
-      thinkingConfig: { includeThoughts: true, thinkingBudget: 2_048 },
-    },
-
+    config,
     contents: [{
       role: 'user',
       parts: [{ text: input.value }],
