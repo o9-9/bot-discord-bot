@@ -60,6 +60,7 @@ export async function handler(interaction: CommandInteraction) {
       thinkingBudget,
     },
   }
+  const runtimeStart = performance.now()
   let respText = await ai.models.generateContent({
     model: 'gemini-2.5-flash-preview-05-20',
     config,
@@ -68,6 +69,9 @@ export async function handler(interaction: CommandInteraction) {
       parts: [{ text: input.value }],
     }],
   }).then(r => r.text!)
+  const runtime = ((performance.now() - runtimeStart) / 1000).toFixed(2)
+  if (thinkingBudget > 0)
+    respText = `-# thought for ${runtime} seconds\n${respText}`
 
   await interaction.reply({
     content: respText.slice(0, 2000),
