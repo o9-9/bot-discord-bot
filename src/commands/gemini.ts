@@ -40,8 +40,12 @@ export const description: CreateApplicationCommandOptions = {
   ],
 }
 
+// gemini ignores the system prompt so here we are...
+const prompt = 'use discord markdown, DO NOT UNDER ANY CIRCUMSTANCES USE MARKDOWN TABLES, ALWAYS keep your response concise and under 2000 characters'
+
 export async function handler(interaction: CommandInteraction) {
-  const input = interaction.data.options.getStringOption('input', true)
+  let input = interaction.data.options.getStringOption('input', true)!.value
+  input = `${prompt}${input}`
   const thinkingBudget = interaction.data.options.getNumberOption('thinking')?.value ?? 0
 
   if (thinkingBudget > 4_096 && !PRO_USERS.includes(interaction.user.id)) {
@@ -54,7 +58,7 @@ export async function handler(interaction: CommandInteraction) {
   interaction.defer()
 
   const config: GenerateContentConfig = {
-    systemInstruction: 'use discord markdown, try to keep your response concise and under 2000 characters',
+    systemInstruction: prompt,
     thinkingConfig: {
       includeThoughts: thinkingBudget > 0,
       thinkingBudget,
@@ -66,7 +70,7 @@ export async function handler(interaction: CommandInteraction) {
     config,
     contents: [{
       role: 'user',
-      parts: [{ text: input.value }],
+      parts: [{ text: input }],
     }],
   }).then(r => r.text!)
   const runtime = ((performance.now() - runtimeStart) / 1000).toFixed(2)
