@@ -19,12 +19,12 @@ const MAX_FILE_SIZE = 25_000_000 // 25MB
 const DLP_FORMAT = `b[filesize<${MAX_FILE_SIZE}][height<=1080][ext=webm]/b[filesize<${MAX_FILE_SIZE}][height<=1080][ext=mp4]/w[height<=1080][filesize<${MAX_FILE_SIZE}]`
 export async function handler(interaction: CommandInteraction) {
   await interaction.defer(Constants.MessageFlags.LOADING)
-  
+
   const url = interaction.data.options.getStringOption('url', true)!.value.trim()
-  const metadata = await validateMedia(url)
-  if (Error.isError(metadata)) {
+  const mediaError = await validateMedia(url)
+  if (Error.isError(mediaError)) {
     return interaction.reply({
-      content: metadata.message,
+      content: mediaError.message,
       flags: Constants.MessageFlags.EPHEMERAL,
     })
   }
