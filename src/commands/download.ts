@@ -1,6 +1,8 @@
 import type { CommandInteraction, CreateApplicationCommandOptions } from 'oceanic.js'
+import { Buffer } from 'node:buffer'
 import { $, file as getFile } from 'bun'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, Constants } from 'oceanic.js'
+import tryCatch from 'try-catch'
 
 export const description: CreateApplicationCommandOptions = {
   name: 'download',
@@ -24,7 +26,7 @@ export async function handler(interaction: CommandInteraction) {
   const mediaError = await validateMedia(url)
   if (Error.isError(mediaError)) {
     return interaction.reply({
-      content: mediaError.message,
+      content: `⚠️ ${mediaError.message}`,
       flags: Constants.MessageFlags.EPHEMERAL,
     })
   }
@@ -53,12 +55,24 @@ export async function handler(interaction: CommandInteraction) {
 
 async function validateMedia(url: string): Promise<void | Error> {
   if (!URL.canParse(url))
-    return new Error('Invalid URL provided.')
+    return new Error('Invalid URL provided')
 
-  const metadata = await $`yt-dlp --no-warnings --dump-single-json ${url}`.nothrow().quiet().then(t => t.json())
-  if (!metadata)
-    return new Error('URL not supported by yt-dlp')
+  const shellResponse = await $`yt-dlp --no-warnings --dump-single-json --playlist-items 1 ${url}`.nothrow().quiet()
+
+  if (shellResponse.exitCode !== 0 || shellResponse.stdout.length === 0) {
+    const stderr = shellResponse.stderr.toString().replace(/^ERROR: /, '')
+    if (stderr.startsWith('[generic]')) // generic errors throw way too much info in, remove most of it
+      return new Error(stderr.replace(/:.*/, ''))
+    return new Error(stderr)
+  }
+
+  const [error, metadata] = tryCatch(JSON.parse, shellResponse.stdout.toString())
+  if (error)
+    return new Error('Failed to parse media metadata')
 
   if (metadata.is_live)
     return new Error('Live streams are not supported')
+
+  if (metadata.duration > 1800)
+    return new Error('Video is too long (over 30 minutes)')
 }
