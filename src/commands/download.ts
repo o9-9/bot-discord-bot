@@ -1,5 +1,6 @@
 import type { CommandInteraction, CreateApplicationCommandOptions } from 'oceanic.js'
 import { Buffer } from 'node:buffer'
+import { readdir } from 'node:fs/promises'
 import { $, file as getFile } from 'bun'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, Constants } from 'oceanic.js'
 import tryCatch from 'try-catch'
@@ -17,32 +18,60 @@ export const description: CreateApplicationCommandOptions = {
   }],
 }
 
-const MAX_FILE_SIZE = 25_000_000 // 25MB
-const DLP_FORMAT = `b[filesize<${MAX_FILE_SIZE}][height<=1080][ext=webm]/b[filesize<${MAX_FILE_SIZE}][height<=1080][ext=mp4]/w[height<=1080][filesize<${MAX_FILE_SIZE}]`
 export async function handler(interaction: CommandInteraction) {
-  await interaction.defer(Constants.MessageFlags.EPHEMERAL)
+  await interaction.reply({ content: 'downloading...', flags: Constants.MessageFlags.EPHEMERAL })
 
   const url = interaction.data.options.getStringOption('url', true)!.value.trim()
   const mediaError = await validateMedia(url)
   if (Error.isError(mediaError))
-    return interaction.reply({ content: `⚠️ ${mediaError.message}` })
+    return interaction.editOriginal({ content: `⚠️ ${mediaError.message}` })
 
-  const destination = Math.random().toString(36).slice(2)
-  const downloadOutput = await $`yt-dlp --format ${DLP_FORMAT} --playlist-items 1 --output ${destination}.%\(ext\)s ${url}`.nothrow().quiet()
-  if (downloadOutput.exitCode !== 0)
-    return interaction.reply({ content: `⚠️ download failed:\n\`\`\`\n${downloadOutput.stderr.toString()}\n\`\`\`` })
+  const media = await acquireMedia(url)
+  if (Error.isError(media))
+    return interaction.editOriginal({ content: `⚠️ ${media.message}` })
 
-  const mp4 = getFile(`${destination}.mp4`)
-  const webm = getFile(`${destination}.webm`)
-  const mp4Exists = await mp4.exists()
-  const file = await (mp4Exists ? mp4 : webm).arrayBuffer()
-  interaction.createFollowup({
-    files: [{
-      name: `${destination}.${mp4Exists ? 'mp4' : 'webm'}`,
-      contents: Buffer.from(file),
-    }],
+  return interaction.createFollowup({
+    files: [{ name: 'download.mp4', contents: media }],
   })
-  await $`rm ${destination}.${mp4Exists ? 'mp4' : 'webm'}`
+}
+
+const MAX_FILE_SIZE = 25_000_000 // 25MB
+const DLP_FORMAT = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
+async function acquireMedia(url: string): Promise<Error | Buffer> {
+  const destinationPrefix = Math.random().toString(36).slice(2) // USE THIS AS A PREFIX FOR ALL FILENAMES
+
+  // download
+  const dlpShellResp = await $`yt-dlp --format ${DLP_FORMAT} --playlist-items 1 --output ${destinationPrefix}.%\(ext\)s ${url}`.nothrow().quiet()
+  if (dlpShellResp.exitCode !== 0)
+    return new Error('failed to download media with yt-dlp')
+  const dlpFilename = await readdir('./').then(files => files.find(f => f.startsWith(destinationPrefix))) // file can have tons of extensions, determine what it's actual extension is
+  if (dlpFilename === undefined || dlpFilename === '')
+    return new Error('couldn\'t find file downloaded by yt-dlp')
+  const dlpFile = getFile(dlpFilename)
+
+  // skip transcoding nonsense for images/audio
+  if (/\.(?:mp3|flac|opus|wav|png|jpg|jpeg|gif|webp)$/.exec(dlpFilename) !== null) {
+    const buffer = Buffer.from(await dlpFile.arrayBuffer())
+    dlpFile.delete()
+    if (buffer.length > MAX_FILE_SIZE)
+      return new Error('Output too big (>25MB)')
+    return buffer
+  }
+
+  // transcode to format known good for discord (x264 mp4)
+  // TODO: smarter transcode with math to fit into filesize more often
+  const ffmpegShellResp = await $`ffmpeg -y -i ${dlpFilename} -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -movflags +faststart ${destinationPrefix}-FINAL.mp4`.nothrow().quiet()
+  dlpFile.delete()
+  if (ffmpegShellResp.exitCode !== 0)
+    return new Error('failed to transcode media with ffmpeg')
+  const ffmpegFile = getFile(`${destinationPrefix}-FINAL.mp4`)
+
+  const buffer = Buffer.from(await ffmpegFile.arrayBuffer())
+  ffmpegFile.delete()
+  if (buffer.length > MAX_FILE_SIZE)
+    return new Error('Output too big (>25MB)')
+
+  return buffer
 }
 
 async function validateMedia(url: string): Promise<void | Error> {
@@ -65,6 +94,6 @@ async function validateMedia(url: string): Promise<void | Error> {
   if (metadata.is_live)
     return new Error('Live streams are not supported')
 
-  if (metadata.duration > 1800)
-    return new Error('Video is too long (over 30 minutes)')
+  if (metadata.duration > 900)
+    return new Error('Video is too long (over 15 minutes)')
 }
