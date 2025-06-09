@@ -51,9 +51,15 @@ export async function handler(interaction: CommandInteraction) {
 
 // fix for reddit galleries & gifs
 async function acquireRedditMedia(url: string): Promise<Error | BufferAndFiletype[]> {
-  // TODO: handle /r/*/s/* urls, ex https://reddit.com/r/YouShouldKnow/s/l6p7VF51z7
-  if (/\/s\//.exec(url) !== null)
-    return new Error('reddit share urls `https://reddit.com/r/.../s/...` aren\'t supported')
+  // handle reddit share urls, ex: https://reddit.com/r/.../s/...
+  if (url.includes('/s/')) {
+    const realUrl = await fetch(url, { redirect: 'manual' })
+      .then(r => r.headers.get('location'))
+      .catch(() => null)
+    if (realUrl === null || realUrl.includes('/s/'))
+      return new Error('failed to follow reddit share url(`https://reddit.com/r/.../s/...`), please try again')
+    url = realUrl
+  }
 
   const postId = /(?<=\/)\w{3,10}$|(?<=comments\/)\w{3,10}/.exec(url)?.[0]
   if (postId === null)
