@@ -1,7 +1,7 @@
 import type { CommandInteraction, CreateApplicationCommandOptions } from 'oceanic.js'
 import { Buffer } from 'node:buffer'
 import { readdir } from 'node:fs/promises'
-import { $, file } from 'bun'
+import { $, file, randomUUIDv7 } from 'bun'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, Constants } from 'oceanic.js'
 import tryCatch from 'try-catch'
 
@@ -39,7 +39,7 @@ const TARGET_TOTAL_KB = (MAX_FILE_SIZE * 0.95 * 8) / 1_000
 const AUDIO_BITRATE_K = 96
 const DLP_FORMAT = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
 async function acquireMedia(url: string): Promise<Error | Buffer> {
-  const destinationPrefix = Math.random().toString(36).slice(2)
+  const destinationPrefix = randomUUIDv7('base64url')
   try {
     // download
     const dlpShellResp = await $`yt-dlp --format ${DLP_FORMAT} --playlist-items 1 --output ${destinationPrefix}.%\(ext\)s ${url}`.nothrow().quiet()
