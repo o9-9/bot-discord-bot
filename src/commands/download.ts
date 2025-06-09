@@ -36,6 +36,7 @@ export async function handler(interaction: CommandInteraction) {
 }
 
 const MAX_FILE_SIZE = 25_000_000 // 25MB
+const MAX_FILE_SIZE_WITH_BUFFER = MAX_FILE_SIZE * 0.95
 const DLP_FORMAT = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
 async function acquireMedia(url: string): Promise<Error | Buffer> {
   const destinationPrefix = Math.random().toString(36).slice(2) // USE THIS AS A PREFIX FOR ALL FILENAMES
@@ -53,7 +54,7 @@ async function acquireMedia(url: string): Promise<Error | Buffer> {
   if (/\.(?:mp3|flac|opus|wav|png|jpg|jpeg|gif|webp)$/.exec(dlpFilename) !== null) {
     const buffer = Buffer.from(await dlpFile.arrayBuffer())
     dlpFile.delete()
-    if (buffer.length > MAX_FILE_SIZE)
+    if (buffer.length > MAX_FILE_SIZE_WITH_BUFFER)
       return new Error('Output too big (>25MB)')
     return buffer
   }
@@ -68,7 +69,7 @@ async function acquireMedia(url: string): Promise<Error | Buffer> {
 
   const buffer = Buffer.from(await ffmpegFile.arrayBuffer())
   ffmpegFile.delete()
-  if (buffer.length > MAX_FILE_SIZE)
+  if (buffer.length > MAX_FILE_SIZE_WITH_BUFFER)
     return new Error('Output too big (>25MB)')
 
   return buffer
