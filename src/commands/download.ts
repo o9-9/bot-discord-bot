@@ -2,6 +2,7 @@ import type { CommandInteraction, CreateApplicationCommandOptions } from 'oceani
 import { Buffer } from 'node:buffer'
 import { readdir } from 'node:fs/promises'
 import { $, file, randomUUIDv7 } from 'bun'
+import _ from 'lodash'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, Constants } from 'oceanic.js'
 import tryCatch from 'try-catch'
 
@@ -39,9 +40,7 @@ export async function handler(interaction: CommandInteraction) {
   else
     fileBuffers.push(...acquisitionerResult)
 
-  const chunkedFileBuffers: BufferAndFiletype[][] = []
-  for (let i = 0; i < fileBuffers.length; i += 10)
-    chunkedFileBuffers.push(fileBuffers.slice(i, i + 10))
+  const chunkedFileBuffers: BufferAndFiletype[][] = _.chunk(fileBuffers, 10)
   for (const fileBufferChunk of chunkedFileBuffers) {
     await interaction.createFollowup({
       files: fileBufferChunk.map(({ buffer, filetype }) => ({ name: `${randomUUIDv7('base64url')}.${filetype}`, contents: buffer })),
@@ -85,11 +84,16 @@ async function acquireRedditMedia(url: string): Promise<Error | BufferAndFiletyp
     return imageBuffers as BufferAndFiletype[]
   }
 
-  // posts that are normal text, or single image end up here, filter out normal text first
-  // example of text post data: https://api.reddit.com/1i5bx0d.json, this should error
-  // example of single image post data: https://api.reddit.com/1l6w06k.json, this should respond with https://i.redd.it/mihhvbmazt5f1.gif (in postData.url)
-  return new Error('temp cant be assed to implement rn')
+  if (postData.url.includes('i.redd.it')) {
+    const buffer = await imgUrlToBuffer(postData.url)
+    if (Error.isError(buffer))
+      return new Error('failed to download image')
+    return [buffer]
+  }
+
+  return new Error('I don\'t think that reddit post has images or videos on it')
 }
+
 async function imgUrlToBuffer(url: string): Promise<BufferAndFiletype | Error> {
   const arrayBuffer = await fetch(url).then(r => r.arrayBuffer()).catch(() => null)
   if (arrayBuffer === null) return new Error('failed to download image')
