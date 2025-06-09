@@ -31,7 +31,7 @@ export async function handler(interaction: CommandInteraction) {
     return interaction.editOriginal({ content: `⚠️ ${media.message}` })
 
   return interaction.createFollowup({
-    files: [{ name: 'download.mp4', contents: media }],
+    files: [{ name: `${randomUUIDv7('base64url')}.mp4`, contents: media }],
   })
 }
 const MAX_FILE_SIZE = 10_000_000 // 10MB
