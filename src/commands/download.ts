@@ -20,31 +20,23 @@ export const description: CreateApplicationCommandOptions = {
 const MAX_FILE_SIZE = 25_000_000 // 25MB
 const DLP_FORMAT = `b[filesize<${MAX_FILE_SIZE}][height<=1080][ext=webm]/b[filesize<${MAX_FILE_SIZE}][height<=1080][ext=mp4]/w[height<=1080][filesize<${MAX_FILE_SIZE}]`
 export async function handler(interaction: CommandInteraction) {
-  await interaction.defer(Constants.MessageFlags.LOADING)
+  await interaction.defer(Constants.MessageFlags.EPHEMERAL)
 
   const url = interaction.data.options.getStringOption('url', true)!.value.trim()
   const mediaError = await validateMedia(url)
-  if (Error.isError(mediaError)) {
-    return interaction.reply({
-      content: `⚠️ ${mediaError.message}`,
-      flags: Constants.MessageFlags.EPHEMERAL,
-    })
-  }
+  if (Error.isError(mediaError))
+    return interaction.reply({ content: `⚠️ ${mediaError.message}` })
 
   const destination = Math.random().toString(36).slice(2)
   const downloadOutput = await $`yt-dlp --format ${DLP_FORMAT} --playlist-items 1 --output ${destination}.%\(ext\)s ${url}`.nothrow().quiet()
-  if (downloadOutput.exitCode !== 0) {
-    return interaction.reply({
-      content: `download failed:\n\`\`\`\n${downloadOutput.stderr.toString()}\n\`\`\``,
-      flags: Constants.MessageFlags.EPHEMERAL,
-    })
-  }
+  if (downloadOutput.exitCode !== 0)
+    return interaction.reply({ content: `⚠️ download failed:\n\`\`\`\n${downloadOutput.stderr.toString()}\n\`\`\`` })
 
   const mp4 = getFile(`${destination}.mp4`)
   const webm = getFile(`${destination}.webm`)
   const mp4Exists = await mp4.exists()
   const file = await (mp4Exists ? mp4 : webm).arrayBuffer()
-  interaction.reply({
+  interaction.createFollowup({
     files: [{
       name: `${destination}.${mp4Exists ? 'mp4' : 'webm'}`,
       contents: Buffer.from(file),
