@@ -8,6 +8,7 @@ import tryCatch from 'try-catch'
 
 const { EPHEMERAL } = MessageFlags
 interface BufferAndFiletype { buffer: Buffer, filetype: string }
+interface LiveStatusThing { interaction: CommandInteraction, statusMessageId: string }
 
 export const description: CreateApplicationCommandOptions = {
   name: 'download',
@@ -30,6 +31,7 @@ export async function handler(interaction: CommandInteraction) {
   await interaction.createMessage({ content: `downloading \`${url}\`` })
   const statusMessageId = await interaction.createFollowup({ content: '_ _', flags: EPHEMERAL })
     .then(({ message }) => message.id)
+  const liveStatusThing = { interaction, statusMessageId }
 
   const fileBuffers: BufferAndFiletype[] = []
 
@@ -37,25 +39,29 @@ export async function handler(interaction: CommandInteraction) {
   if (url.includes('reddit.com') || url.includes('redd.it'))
     mediaAcquisitioner = acquireRedditMedia
 
-  const acquisitionerResult = await mediaAcquisitioner(url)
+  const acquisitionerResult = await mediaAcquisitioner(url, { interaction, statusMessageId })
   if (Error.isError(acquisitionerResult)) {
     interaction.deleteOriginal()
-    const statusText = await getStatusText(interaction, statusMessageId)
-    return interaction.editFollowup(statusMessageId, { content: `${statusText}\n\n⚠️ ${acquisitionerResult.message}` })
+    return appendTextToStatus(liveStatusThing, `\n⚠️ ${acquisitionerResult.message}`)
   }
   else {
-    interaction.deleteFollowup(statusMessageId)
     fileBuffers.push(...acquisitionerResult)
   }
 
+  await appendTextToStatus(liveStatusThing, 'uploading media to discord!')
   const chunkedFileEmbeds: DiscordFile[][] = _.chunk(fileBuffers.map(({ buffer, filetype }) => ({ name: `${randomUUIDv7('base64url')}.${filetype}`, contents: buffer })))
   await interaction.editOriginal({ content: ' ', files: chunkedFileEmbeds.shift()! })
   for (const fileBufferChunk of chunkedFileEmbeds)
     await interaction.reply({ files: fileBufferChunk })
+
+  await appendTextToStatus(liveStatusThing, 'done! (deleting status message in 20 seconds)')
+  setTimeout(() => interaction.deleteFollowup(statusMessageId), 20_000)
 }
 
 // fix for reddit galleries & gifs
-async function acquireRedditMedia(url: string): Promise<Error | BufferAndFiletype[]> {
+async function acquireRedditMedia(url: string, liveStatusThing: LiveStatusThing): Promise<Error | BufferAndFiletype[]> {
+  await appendTextToStatus(liveStatusThing, 'acquiring reddit post metadata')
+
   // handle reddit share urls, ex: https://reddit.com/r/.../s/...
   if (url.includes('/s/')) {
     const realUrl = await fetch(url, { redirect: 'manual' })
@@ -79,11 +85,12 @@ async function acquireRedditMedia(url: string): Promise<Error | BufferAndFiletyp
 
   // fallback on yt-dlp for reddit videos
   if (postData.is_video)
-    return acquireMediaDLP(url)
+    return acquireMediaDLP(url, liveStatusThing)
 
   if (postData.is_gallery) {
     const imageUrls = Object.values(postData.media_metadata)
       .map((item: any) => (item.s.u as string).replace('preview', 'i').replace(/\?.*$/, ''))
+    await appendTextToStatus(liveStatusThing, `downloading ${imageUrls.length} gallery items`)
     const imageBuffers = await Promise.all([...imageUrls.map(url => imgUrlToBuffer(url))])
     if (imageBuffers.some(Error.isError))
       return new Error('failed to download gallery images')
@@ -91,6 +98,7 @@ async function acquireRedditMedia(url: string): Promise<Error | BufferAndFiletyp
   }
 
   if (postData.url.includes('i.redd.it')) {
+    await appendTextToStatus(liveStatusThing, 'downloading post image')
     const buffer = await imgUrlToBuffer(postData.url)
     if (Error.isError(buffer))
       return new Error('failed to download image')
@@ -110,14 +118,15 @@ const MAX_FILE_SIZE = 10_000_000 // 10MB
 const TARGET_TOTAL_KB = (MAX_FILE_SIZE * 0.9 * 8) / 1_000
 const AUDIO_BITRATE_K = 96
 const DLP_FORMAT = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
-async function acquireMediaDLP(url: string): Promise<Error | BufferAndFiletype[]> {
-  const mediaError = await validateMediaDLP(url)
+async function acquireMediaDLP(url: string, liveStatusThing: LiveStatusThing): Promise<Error | BufferAndFiletype[]> {
+  const mediaError = await validateMediaDLP(url, liveStatusThing)
   if (Error.isError(mediaError))
     return mediaError
 
   const destinationPrefix = randomUUIDv7('base64url')
   try {
     // download
+    await appendTextToStatus(liveStatusThing, 'downloading with yt-dlp')
     const dlpShellResp = await $`yt-dlp --format ${DLP_FORMAT} --playlist-items 1 --output ${destinationPrefix}.%\(ext\)s ${url}`.nothrow().quiet()
     if (dlpShellResp.exitCode !== 0)
       return new Error('failed to download media with yt-dlp')
@@ -135,6 +144,7 @@ async function acquireMediaDLP(url: string): Promise<Error | BufferAndFiletype[]
     }
 
     // calculate target bitrate
+    await appendTextToStatus(liveStatusThing, 'determining target bitrate')
     const durationShellResp = await $`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${dlpFilename}`.nothrow().quiet()
     const duration = Number.parseFloat(durationShellResp.stdout.toString())
     if (durationShellResp.exitCode !== 0 || Number.isNaN(duration) || duration <= 0)
@@ -146,10 +156,12 @@ async function acquireMediaDLP(url: string): Promise<Error | BufferAndFiletype[]
       return new Error(`media cant fit within 10MB at a reasonable audio quality.`)
 
     // 2 pass transcode
+    await appendTextToStatus(liveStatusThing, 'transcode pass 1')
     const ffmpegPass1 = await $`ffmpeg -y -i ${dlpFilename} -c:v libx264 -preset fast -b:v ${targetVideoBitrateK}k -pass 1 -passlogfile ${destinationPrefix}-passlog -an -f mp4 /dev/null`.nothrow().quiet()
     if (ffmpegPass1.exitCode !== 0)
       return new Error('ffmpeg transcoding pass 1 failed.')
 
+    await appendTextToStatus(liveStatusThing, 'transcode pass 2')
     const ffmpegPass2 = await $`ffmpeg -i ${dlpFilename} -c:v libx264 -preset fast -b:v ${targetVideoBitrateK}k -pass 2 -passlogfile ${destinationPrefix}-passlog -c:a aac -b:a ${AUDIO_BITRATE_K}k -movflags +faststart ${destinationPrefix}-FINAL.mp4`.nothrow().quiet()
     if (ffmpegPass2.exitCode !== 0)
       return new Error('ffmpeg transcoding pass 2 failed.')
@@ -163,12 +175,14 @@ async function acquireMediaDLP(url: string): Promise<Error | BufferAndFiletype[]
   }
   finally {
     // cleanup!
+    await appendTextToStatus(liveStatusThing, 'cleaning up loose files')
     const processFiles = await readdir('./').then(files => files.filter(f => f.startsWith(destinationPrefix)))
     processFiles.forEach(f => file(f).delete())
   }
 }
 
-async function validateMediaDLP(url: string): Promise<void | Error> {
+async function validateMediaDLP(url: string, liveStatusThing: LiveStatusThing): Promise<void | Error> {
+  await appendTextToStatus(liveStatusThing, 'ensuring media can be scraped')
   const shellResponse = await $`yt-dlp --no-warnings --dump-single-json --playlist-items 1 ${url}`.nothrow().quiet()
 
   if (shellResponse.exitCode !== 0 || shellResponse.stdout.length === 0) {
@@ -189,8 +203,13 @@ async function validateMediaDLP(url: string): Promise<void | Error> {
     return new Error('Video is too long (over 15 minutes)')
 }
 
-async function getStatusText(interaction: CommandInteraction, messageID: string): Promise<string> {
-  const statusText = await interaction.getFollowup(messageID).then(f => f.content)
+async function appendTextToStatus(liveStatusThing: LiveStatusThing, content: string) {
+  const statusText = await getStatusText(liveStatusThing)
+  liveStatusThing.interaction.editFollowup(liveStatusThing.statusMessageId, { content: `${statusText}\n${content}` })
+}
+
+async function getStatusText({ interaction, statusMessageId }: LiveStatusThing): Promise<string> {
+  const statusText = await interaction.getFollowup(statusMessageId).then(f => f.content)
   if (statusText === '_ _') return ''
   return statusText
 }
