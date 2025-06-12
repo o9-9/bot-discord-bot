@@ -1,10 +1,10 @@
-import type { CommandInteraction, CreateApplicationCommandOptions, InteractionOptions } from 'oceanic.js'
+import type { CommandInteraction, CreateApplicationCommandOptions } from 'oceanic.js'
 import { join as joinPath } from 'node:path'
 import { env } from 'bun'
 import { Client, InteractionContextTypes, InteractionTypes } from 'oceanic.js'
 import rra from 'recursive-readdir-async'
 
-const { TOKEN, APP_ID, TEST } = env
+const { TOKEN, TEST } = env
 
 const client = new Client({ auth: `Bot ${TOKEN}` })
 client.on('error', err => console.error('Bot Error:', err))

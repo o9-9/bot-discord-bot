@@ -1,11 +1,12 @@
-import type { CommandInteraction, CreateApplicationCommandOptions } from 'oceanic.js'
+import type { CommandInteraction, CreateApplicationCommandOptions, File as DiscordFile } from 'oceanic.js'
 import { Buffer } from 'node:buffer'
 import { readdir } from 'node:fs/promises'
 import { $, file, randomUUIDv7 } from 'bun'
 import _ from 'lodash'
-import { ApplicationCommandOptionTypes, ApplicationCommandTypes, Constants } from 'oceanic.js'
+import { ApplicationCommandOptionTypes, ApplicationCommandTypes, MessageFlags } from 'oceanic.js'
 import tryCatch from 'try-catch'
 
+const { EPHEMERAL } = MessageFlags
 interface BufferAndFiletype { buffer: Buffer, filetype: string }
 
 export const description: CreateApplicationCommandOptions = {
@@ -24,9 +25,11 @@ export const description: CreateApplicationCommandOptions = {
 export async function handler(interaction: CommandInteraction) {
   const url = interaction.data.options.getStringOption('url', true)!.value.trim()
   if (!URL.canParse(url))
-    return interaction.reply({ content: '⚠️ Invalid URL provided', flags: Constants.MessageFlags.EPHEMERAL })
+    return interaction.createMessage({ content: '⚠️ Invalid URL provided', flags: EPHEMERAL })
 
-  await interaction.reply({ content: 'downloading...', flags: Constants.MessageFlags.EPHEMERAL })
+  await interaction.createMessage({ content: `downloading \`${url}\`` })
+  const statusMessageId = await interaction.createFollowup({ content: '_ _', flags: EPHEMERAL })
+    .then(({ message }) => message.id)
 
   const fileBuffers: BufferAndFiletype[] = []
 
@@ -35,17 +38,20 @@ export async function handler(interaction: CommandInteraction) {
     mediaAcquisitioner = acquireRedditMedia
 
   const acquisitionerResult = await mediaAcquisitioner(url)
-  if (Error.isError(acquisitionerResult))
-    return interaction.editOriginal({ content: `⚠️ ${acquisitionerResult.message}` })
-  else
-    fileBuffers.push(...acquisitionerResult)
-
-  const chunkedFileBuffers: BufferAndFiletype[][] = _.chunk(fileBuffers, 10)
-  for (const fileBufferChunk of chunkedFileBuffers) {
-    await interaction.createFollowup({
-      files: fileBufferChunk.map(({ buffer, filetype }) => ({ name: `${randomUUIDv7('base64url')}.${filetype}`, contents: buffer })),
-    })
+  if (Error.isError(acquisitionerResult)) {
+    interaction.deleteOriginal()
+    const statusText = await getStatusText(interaction, statusMessageId)
+    return interaction.editFollowup(statusMessageId, { content: `${statusText}\n\n⚠️ ${acquisitionerResult.message}` })
   }
+  else {
+    interaction.deleteFollowup(statusMessageId)
+    fileBuffers.push(...acquisitionerResult)
+  }
+
+  const chunkedFileEmbeds: DiscordFile[][] = _.chunk(fileBuffers.map(({ buffer, filetype }) => ({ name: `${randomUUIDv7('base64url')}.${filetype}`, contents: buffer })))
+  await interaction.editOriginal({ content: ' ', files: chunkedFileEmbeds.shift()! })
+  for (const fileBufferChunk of chunkedFileEmbeds)
+    await interaction.reply({ files: fileBufferChunk })
 }
 
 // fix for reddit galleries & gifs
@@ -181,4 +187,10 @@ async function validateMediaDLP(url: string): Promise<void | Error> {
 
   if (metadata.duration > 900)
     return new Error('Video is too long (over 15 minutes)')
+}
+
+async function getStatusText(interaction: CommandInteraction, messageID: string): Promise<string> {
+  const statusText = await interaction.getFollowup(messageID).then(f => f.content)
+  if (statusText === '_ _') return ''
+  return statusText
 }
