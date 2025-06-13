@@ -5,6 +5,7 @@ import { $, file, randomUUIDv7 } from 'bun'
 import _ from 'lodash'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, MessageFlags } from 'oceanic.js'
 import tryCatch from 'try-catch'
+import { codeBlock } from '../utils/formatting'
 
 const { EPHEMERAL } = MessageFlags
 interface BufferAndFiletype { buffer: Buffer, filetype: string }
@@ -127,7 +128,7 @@ async function acquireMediaDLP(url: string, liveStatusThing: LiveStatusThing): P
   try {
     // download
     await appendTextToStatus(liveStatusThing, 'downloading with yt-dlp')
-    const dlpShellResp = await $`yt-dlp --format ${DLP_FORMAT} --playlist-items 1 --output ${destinationPrefix}.%\(ext\)s ${url}`.nothrow().quiet()
+    const dlpShellResp = await liveStatusShell(liveStatusThing, `yt-dlp --format '${DLP_FORMAT}' --playlist-items 1 --output '${destinationPrefix}.%(ext)s' ${url}`)
     if (dlpShellResp.exitCode !== 0)
       return new Error('failed to download media with yt-dlp')
     const dlpFilename = await readdir('./').then(files => files.find(f => f.startsWith(destinationPrefix))) // file can have tons of extensions, determine what it's actual extension is
@@ -145,7 +146,7 @@ async function acquireMediaDLP(url: string, liveStatusThing: LiveStatusThing): P
 
     // calculate target bitrate
     await appendTextToStatus(liveStatusThing, 'determining target bitrate')
-    const durationShellResp = await $`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${dlpFilename}`.nothrow().quiet()
+    const durationShellResp = await liveStatusShell(liveStatusThing, `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${dlpFilename}`)
     const duration = Number.parseFloat(durationShellResp.stdout.toString())
     if (durationShellResp.exitCode !== 0 || Number.isNaN(duration) || duration <= 0)
       return new Error('ffprobe failed to get media duration.')
@@ -157,12 +158,12 @@ async function acquireMediaDLP(url: string, liveStatusThing: LiveStatusThing): P
 
     // 2 pass transcode
     await appendTextToStatus(liveStatusThing, 'transcode pass 1')
-    const ffmpegPass1 = await $`ffmpeg -y -i ${dlpFilename} -c:v libx264 -preset fast -b:v ${targetVideoBitrateK}k -pass 1 -passlogfile ${destinationPrefix}-passlog -an -f mp4 /dev/null`.nothrow().quiet()
+    const ffmpegPass1 = await liveStatusShell(liveStatusThing, `ffmpeg -y -i ${dlpFilename} -c:v libx264 -preset fast -b:v ${targetVideoBitrateK}k -pass 1 -passlogfile ${destinationPrefix}-passlog -an -f mp4 /dev/null`)
     if (ffmpegPass1.exitCode !== 0)
       return new Error('ffmpeg transcoding pass 1 failed.')
 
     await appendTextToStatus(liveStatusThing, 'transcode pass 2')
-    const ffmpegPass2 = await $`ffmpeg -i ${dlpFilename} -c:v libx264 -preset fast -b:v ${targetVideoBitrateK}k -pass 2 -passlogfile ${destinationPrefix}-passlog -c:a aac -b:a ${AUDIO_BITRATE_K}k -movflags +faststart ${destinationPrefix}-FINAL.mp4`.nothrow().quiet()
+    const ffmpegPass2 = await liveStatusShell(liveStatusThing, `ffmpeg -i ${dlpFilename} -c:v libx264 -preset fast -b:v ${targetVideoBitrateK}k -pass 2 -passlogfile ${destinationPrefix}-passlog -c:a aac -b:a ${AUDIO_BITRATE_K}k -movflags +faststart ${destinationPrefix}-FINAL.mp4`)
     if (ffmpegPass2.exitCode !== 0)
       return new Error('ffmpeg transcoding pass 2 failed.')
 
@@ -183,7 +184,7 @@ async function acquireMediaDLP(url: string, liveStatusThing: LiveStatusThing): P
 
 async function validateMediaDLP(url: string, liveStatusThing: LiveStatusThing): Promise<void | Error> {
   await appendTextToStatus(liveStatusThing, 'ensuring media can be scraped')
-  const shellResponse = await $`yt-dlp --no-warnings --dump-single-json --playlist-items 1 ${url}`.nothrow().quiet()
+  const shellResponse = await liveStatusShell(liveStatusThing, `yt-dlp --no-warnings --dump-single-json --playlist-items 1 ${url}`)
 
   if (shellResponse.exitCode !== 0 || shellResponse.stdout.length === 0) {
     const stderr = shellResponse.stderr.toString().replace(/^ERROR: /, '')
@@ -212,4 +213,24 @@ async function getStatusText({ interaction, statusMessageId }: LiveStatusThing):
   const statusText = await interaction.getFollowup(statusMessageId).then(f => f.content)
   if (statusText === '_ _') return ''
   return statusText
+}
+
+async function liveStatusShell({ interaction, statusMessageId }: LiveStatusThing, command: string): Promise<$.ShellOutput> {
+  const statusContent = await getStatusText({ interaction, statusMessageId })
+  let shellContent = ''
+  let editPromise: Promise<any>
+  function liveEditShellContent(newLine: string) {
+    if (newLine.length > 200) return // prevent Invalid Form Body on PATCH --- content Must be 2000 or fewer in length.
+    shellContent = `${shellContent}\n${newLine}`.trim()
+    editPromise = interaction.editFollowup(statusMessageId, { content: `${statusContent}\n${codeBlock(shellContent)}` })
+  }
+  liveEditShellContent(`$ ${command}`)
+  const shellPromise = $`${{ raw: command }}`.quiet().nothrow()
+  for await (const line of shellPromise.lines())
+    liveEditShellContent(line)
+  const shellResp = await shellPromise
+  if (shellResp.stderr.length > 0)
+    liveEditShellContent(shellResp.stderr.toString())
+  await editPromise!
+  return shellResp
 }
