@@ -5,7 +5,7 @@ import { $, file, randomUUIDv7 } from 'bun'
 import _ from 'lodash'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, MessageFlags } from 'oceanic.js'
 import tryCatch from 'try-catch'
-import { codeBlock } from '../utils/formatting'
+import { codeBlock, last2000 } from '../utils/formatting'
 
 const { EPHEMERAL } = MessageFlags
 interface BufferAndFiletype { buffer: Buffer, filetype: string }
@@ -206,7 +206,7 @@ async function validateMediaDLP(url: string, liveStatusThing: LiveStatusThing): 
 
 async function appendTextToStatus(liveStatusThing: LiveStatusThing, content: string) {
   const statusText = await getStatusText(liveStatusThing)
-  liveStatusThing.interaction.editFollowup(liveStatusThing.statusMessageId, { content: `${statusText}\n${content}` })
+  liveStatusThing.interaction.editFollowup(liveStatusThing.statusMessageId, { content: last2000(`${statusText}\n${content}`) })
 }
 
 async function getStatusText({ interaction, statusMessageId }: LiveStatusThing): Promise<string> {
@@ -220,9 +220,9 @@ async function liveStatusShell({ interaction, statusMessageId }: LiveStatusThing
   let shellContent = ''
   let editPromise: Promise<any>
   function liveEditShellContent(newLine: string) {
-    if (newLine.length > 500) return // prevent Invalid Form Body on PATCH --- content Must be 2000 or fewer in length.
+    newLine = newLine.slice(0, 100) // prevent Invalid Form Body on PATCH --- content Must be 2000 or fewer in length.
     shellContent = `${shellContent}\n${newLine}`.trim()
-    editPromise = interaction.editFollowup(statusMessageId, { content: `${statusContent}\n${codeBlock(shellContent)}` })
+    editPromise = interaction.editFollowup(statusMessageId, { content: last2000(`${statusContent}\n${codeBlock(shellContent)}`) })
   }
   liveEditShellContent(`$ ${command}`)
   const shellPromise = $`${{ raw: command }}`.quiet().nothrow()
