@@ -128,7 +128,7 @@ async function acquireMediaDLP(url: string, liveStatusThing: LiveStatusThing): P
   try {
     // download
     await appendTextToStatus(liveStatusThing, 'downloading with yt-dlp')
-    const dlpShellResp = await liveStatusShell(liveStatusThing, `yt-dlp --format '${DLP_FORMAT}' --playlist-items 1 --output '${destinationPrefix}.%(ext)s' ${url}`)
+    const dlpShellResp = await liveStatusShell(liveStatusThing, `yt-dlp --format '${DLP_FORMAT}' --playlist-items 1 --output '${destinationPrefix}.%(ext)s' '${url}'`)
     if (dlpShellResp.exitCode !== 0)
       return new Error('failed to download media with yt-dlp')
     const dlpFilename = await readdir('./').then(files => files.find(f => f.startsWith(destinationPrefix))) // file can have tons of extensions, determine what it's actual extension is
@@ -184,7 +184,7 @@ async function acquireMediaDLP(url: string, liveStatusThing: LiveStatusThing): P
 
 async function validateMediaDLP(url: string, liveStatusThing: LiveStatusThing): Promise<void | Error> {
   await appendTextToStatus(liveStatusThing, 'ensuring media can be scraped')
-  const shellResponse = await liveStatusShell(liveStatusThing, `yt-dlp --no-warnings --dump-single-json --playlist-items 1 ${url}`)
+  const shellResponse = await liveStatusShell(liveStatusThing, `yt-dlp --no-warnings --dump-single-json --playlist-items 1 '${url}'`)
 
   if (shellResponse.exitCode !== 0 || shellResponse.stdout.length === 0) {
     const stderr = shellResponse.stderr.toString().replace(/^ERROR: /, '')
@@ -220,7 +220,7 @@ async function liveStatusShell({ interaction, statusMessageId }: LiveStatusThing
   let shellContent = ''
   let editPromise: Promise<any>
   function liveEditShellContent(newLine: string) {
-    if (newLine.length > 200) return // prevent Invalid Form Body on PATCH --- content Must be 2000 or fewer in length.
+    if (newLine.length > 500) return // prevent Invalid Form Body on PATCH --- content Must be 2000 or fewer in length.
     shellContent = `${shellContent}\n${newLine}`.trim()
     editPromise = interaction.editFollowup(statusMessageId, { content: `${statusContent}\n${codeBlock(shellContent)}` })
   }
