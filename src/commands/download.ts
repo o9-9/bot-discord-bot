@@ -11,23 +11,47 @@ const { EPHEMERAL } = MessageFlags
 interface BufferAndFiletype { buffer: Buffer, filetype: string }
 interface LiveStatusThing { interaction: CommandInteraction, statusMessageId: string }
 
+const CLIP_FORMAT_TEXT = 'formatted as either number of seconds or XXhXXmXXs (ex: 2h15m3s)'
 export const description: CreateApplicationCommandOptions = {
   name: 'download',
   description: 'download a media url',
   type: ApplicationCommandTypes.CHAT_INPUT,
-  options: [{
-    name: 'url',
-    description: 'the media url to download',
-    type: ApplicationCommandOptionTypes.STRING,
-    maxLength: 1024,
-    required: true,
-  }],
+  options: [
+    {
+      name: 'url',
+      description: 'the media url to download',
+      type: ApplicationCommandOptionTypes.STRING,
+      maxLength: 1024,
+      required: true,
+    },
+    {
+      name: 'clip-start',
+      description: `starting timestamp of clip, ${CLIP_FORMAT_TEXT}`,
+      type: ApplicationCommandOptionTypes.STRING,
+      maxLength: 20,
+    },
+    {
+      name: 'clip-end',
+      description: `ending timestamp of clip, ${CLIP_FORMAT_TEXT}`,
+      type: ApplicationCommandOptionTypes.STRING,
+      maxLength: 20,
+    },
+  ],
 }
 
 export async function handler(interaction: CommandInteraction) {
-  const url = interaction.data.options.getStringOption('url', true)!.value.trim()
+  const options = interaction.data.options
+  const url = options.getStringOption('url', true)!.value.trim()
   if (!URL.canParse(url))
     return interaction.createMessage({ content: '⚠️ Invalid URL provided', flags: EPHEMERAL })
+
+  const clipStart = parseClipTime(options.getStringOption('clip-start')?.value.trim())
+  const clipEnd = parseClipTime(options.getStringOption('clip-end')?.value.trim())
+  if (Error.isError(clipStart) || Error.isError(clipEnd))
+    return interaction.createMessage({ content: `Invalid clip-start/clip-end, must be ${CLIP_FORMAT_TEXT}`, flags: EPHEMERAL })
+  let clipArg = ''
+  if (clipStart !== undefined || clipEnd !== undefined)
+    clipArg = `--download-sections '*${clipStart ?? ''}-${clipEnd ?? ''}'`
 
   await interaction.createMessage({ content: `downloading \`${url}\`` })
   const statusMessageId = await interaction.createFollowup({ content: '_ _', flags: EPHEMERAL })
@@ -40,7 +64,7 @@ export async function handler(interaction: CommandInteraction) {
   if (url.includes('reddit.com') || url.includes('redd.it'))
     mediaAcquisitioner = acquireRedditMedia
 
-  const acquisitionerResult = await mediaAcquisitioner(url, { interaction, statusMessageId })
+  const acquisitionerResult = await mediaAcquisitioner(url, clipArg, { interaction, statusMessageId })
   if (Error.isError(acquisitionerResult)) {
     interaction.deleteOriginal()
     return appendTextToStatus(liveStatusThing, `\n⚠️ ${acquisitionerResult.message}`)
@@ -60,7 +84,7 @@ export async function handler(interaction: CommandInteraction) {
 }
 
 // fix for reddit galleries & gifs
-async function acquireRedditMedia(url: string, liveStatusThing: LiveStatusThing): Promise<Error | BufferAndFiletype[]> {
+async function acquireRedditMedia(url: string, clipArg: string, liveStatusThing: LiveStatusThing): Promise<Error | BufferAndFiletype[]> {
   await appendTextToStatus(liveStatusThing, 'acquiring reddit post metadata')
 
   // handle reddit share urls, ex: https://reddit.com/r/.../s/...
@@ -86,7 +110,7 @@ async function acquireRedditMedia(url: string, liveStatusThing: LiveStatusThing)
 
   // fallback on yt-dlp for reddit videos
   if (postData.is_video)
-    return acquireMediaDLP(url, liveStatusThing)
+    return acquireMediaDLP(url, clipArg, liveStatusThing)
 
   if (postData.is_gallery) {
     const imageUrls = Object.values(postData.media_metadata)
@@ -119,7 +143,7 @@ const MAX_FILE_SIZE = 10_000_000 // 10MB
 const TARGET_TOTAL_KB = (MAX_FILE_SIZE * 0.9 * 8) / 1_000
 const AUDIO_BITRATE_K = 96
 const DLP_FORMAT = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
-async function acquireMediaDLP(url: string, liveStatusThing: LiveStatusThing): Promise<Error | BufferAndFiletype[]> {
+async function acquireMediaDLP(url: string, clipArg: string, liveStatusThing: LiveStatusThing): Promise<Error | BufferAndFiletype[]> {
   const mediaError = await validateMediaDLP(url, liveStatusThing)
   if (Error.isError(mediaError))
     return mediaError
@@ -128,7 +152,7 @@ async function acquireMediaDLP(url: string, liveStatusThing: LiveStatusThing): P
   try {
     // download
     await appendTextToStatus(liveStatusThing, 'downloading with yt-dlp')
-    const dlpShellResp = await liveStatusShell(liveStatusThing, `yt-dlp --format '${DLP_FORMAT}' --playlist-items 1 --output '${destinationPrefix}.%(ext)s' '${url}'`)
+    const dlpShellResp = await liveStatusShell(liveStatusThing, `yt-dlp --format '${DLP_FORMAT}' ${clipArg} --playlist-items 1 --output '${destinationPrefix}.%(ext)s' '${url}'`)
     if (dlpShellResp.exitCode !== 0)
       return new Error('failed to download media with yt-dlp')
     const dlpFilename = await readdir('./').then(files => files.find(f => f.startsWith(destinationPrefix))) // file can have tons of extensions, determine what it's actual extension is
@@ -233,4 +257,21 @@ async function liveStatusShell({ interaction, statusMessageId }: LiveStatusThing
     liveEditShellContent(shellResp.stderr.toString())
   await editPromise!
   return shellResp
+}
+
+function parseClipTime(str: string | undefined): number | undefined | Error {
+  if (str === undefined) return
+
+  const simpleParse = Number(str)
+  if (!Number.isNaN(simpleParse))
+    return simpleParse
+
+  const parseResult = /(?:(\d+)h)?(?:(\d+)m)?(\d+)s?/.exec(str)
+  if (parseResult === null)
+    return new Error('invalid format')
+  const [_, hourStr, minuteStr, secondStr] = parseResult
+
+  return Number(hourStr ?? 0) * 60 * 60
+    + Number(minuteStr ?? 0) * 60
+    + Number(secondStr ?? 0)
 }
