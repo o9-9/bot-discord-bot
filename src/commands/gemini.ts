@@ -63,8 +63,6 @@ export async function handler(interaction: CommandInteraction) {
     thinkingConfig: { thinkingBudget },
     // enable use of google search grounding
     tools: [{ googleSearch: {} }],
-    // prevent ai trying to use lat/long of server fixes "User location is not supported for the API use"
-    toolConfig: { retrievalConfig: { latLng: { latitude: 0, longitude: 0 } } },
   }
   const runtimeStart = performance.now()
   let respText = await ai.models.generateContent({
