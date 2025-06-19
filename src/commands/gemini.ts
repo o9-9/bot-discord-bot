@@ -3,6 +3,7 @@ import type { CommandInteraction, CreateApplicationCommandOptions } from 'oceani
 import { GoogleGenAI } from '@google/genai'
 import { env } from 'bun'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, Constants } from 'oceanic.js'
+import { split2000 } from '../utils/formatting'
 
 const { GEMINI_KEY } = env
 const ai = new GoogleGenAI({ apiKey: GEMINI_KEY! })
@@ -77,16 +78,8 @@ export async function handler(interaction: CommandInteraction) {
   if (thinkingBudget > 0)
     respText = `-# thought for ${runtime} seconds\n${respText}`
 
-  await interaction.reply({
-    content: respText.slice(0, 2000),
-  })
-
-  // incase resp length > 2000
-  respText = respText.slice(2000)
-  while (respText.length > 0) {
-    await interaction.createFollowup({
-      content: respText.slice(0, 2000),
-    })
-    respText = respText.slice(2000)
-  }
+  const replyChunks = split2000(respText)
+  await interaction.reply({ content: replyChunks.shift() })
+  for (const chunk of replyChunks)
+    await interaction.createFollowup({ content: chunk })
 }
