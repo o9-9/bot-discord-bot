@@ -42,11 +42,11 @@ export const description: CreateApplicationCommandOptions = {
 }
 
 // gemini ignores the system prompt so here we are...
-const prompt = 'use discord markdown, DO NOT UNDER ANY CIRCUMSTANCES USE MARKDOWN TABLES, ALWAYS keep your response concise and under 2000 characters'
+const systemInstruction = 'use discord markdown, DO NOT UNDER ANY CIRCUMSTANCES USE MARKDOWN TABLES, ALWAYS keep your response concise and under 2000 characters'
 
 export async function handler(interaction: CommandInteraction) {
   let input = interaction.data.options.getStringOption('input', true)!.value
-  input = `${prompt}${input}`
+  input = `${systemInstruction}\n${input}`
   const thinkingBudget = interaction.data.options.getNumberOption('thinking')?.value ?? 0
 
   if (thinkingBudget > 4_096 && !PRO_USERS.includes(interaction.user.id)) {
@@ -59,11 +59,12 @@ export async function handler(interaction: CommandInteraction) {
   interaction.defer()
 
   const config: GenerateContentConfig = {
-    systemInstruction: prompt,
-    thinkingConfig: {
-      includeThoughts: thinkingBudget > 0,
-      thinkingBudget,
-    },
+    systemInstruction,
+    thinkingConfig: { thinkingBudget },
+    // enable use of google search grounding
+    tools: [{ googleSearch: {} }],
+    // prevent ai trying to use lat/long of server fixes "User location is not supported for the API use"
+    toolConfig: { retrievalConfig: { latLng: { latitude: 0, longitude: 0 } } },
   }
   const runtimeStart = performance.now()
   let respText = await ai.models.generateContent({
