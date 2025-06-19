@@ -3,7 +3,7 @@ import type { CommandInteraction, CreateApplicationCommandOptions } from 'oceani
 import { GoogleGenAI } from '@google/genai'
 import { env } from 'bun'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, Constants } from 'oceanic.js'
-import { split2000 } from '../utils/formatting'
+import { codeBlock, split2000 } from '../utils/formatting'
 
 const { GEMINI_KEY } = env
 const ai = new GoogleGenAI({ apiKey: GEMINI_KEY! })
@@ -72,7 +72,7 @@ export async function handler(interaction: CommandInteraction) {
       role: 'user',
       parts: [{ text: input }],
     }],
-  }).then(r => r.text!)
+  }).then(r => r.text!).catch(e => `⚠️ generation error:\n${codeBlock(e)}`)
   const runtime = ((performance.now() - runtimeStart) / 1000).toFixed(2)
   if (thinkingBudget > 0)
     respText = `-# thought for ${runtime} seconds\n${respText}`
