@@ -66,7 +66,7 @@ export async function handler(interaction: CommandInteraction) {
   }
   const runtimeStart = performance.now()
   let respText = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-05-20',
+    model: 'gemini-2.5',
     config,
     contents: [{
       role: 'user',
