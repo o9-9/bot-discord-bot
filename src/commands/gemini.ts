@@ -42,11 +42,16 @@ export const description: CreateApplicationCommandOptions = {
 }
 
 // gemini ignores the system prompt so here we are...
-const systemInstruction = 'use discord markdown, DO NOT UNDER ANY CIRCUMSTANCES USE MARKDOWN TABLES, ALWAYS keep your response concise and under 2000 characters'
+const systemInstruction = `use discord markdown, DO NOT UNDER ANY CIRCUMSTANCES USE MARKDOWN TABLES, ALWAYS keep your response concise and under 2000 characters
+When writing code:
+- **Style:** always use trailing commas, never use semicolons in languages where they are optional 
+- **Conciseness:** Write concise code using guard clauses and prefer methods instead of statements
+- **Comments:** Add code comments sparingly. Focus on *why* something is done, especially for complex logic, rather than *what* is done. Only add high-value comments if necessary for clarity or if requested by the user. Do not edit comments that are separate from the code you are changing. *NEVER* talk to the user or describe your changes through comments.
+- **Explaining Changes:** After completing a code modification or file operation *do not* provide summaries unless asked.`
 
 export async function handler(interaction: CommandInteraction) {
   let input = interaction.data.options.getStringOption('input', true)!.value
-  input = `${systemInstruction}\n${input}`
+  input = `${systemInstruction}\n\n${input}` // gemini just ignores system instruction so put it in user text as well
   const thinkingBudget = interaction.data.options.getNumberOption('thinking')?.value ?? 0
 
   if (thinkingBudget > 4_096 && !PRO_USERS.includes(interaction.user.id)) {
