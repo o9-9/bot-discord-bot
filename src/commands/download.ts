@@ -1,6 +1,7 @@
 import type { CommandInteraction, CreateApplicationCommandOptions, File as DiscordFile } from 'oceanic.js'
 import { Buffer } from 'node:buffer'
-import { $, randomUUIDv7 } from 'bun'
+import { readdir } from 'node:fs/promises'
+import { $, file, randomUUIDv7 } from 'bun'
 import _ from 'lodash'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, MessageFlags } from 'oceanic.js'
 import tryCatch from 'try-catch'
@@ -143,7 +144,7 @@ async function imgUrlToBuffer(url: string): Promise<BufferAndFiletype | Error> {
 
 const MAX_FILE_SIZE = 10_000_000 // 10MB
 const TARGET_TOTAL_KB = (MAX_FILE_SIZE * 0.8 * 8) / 1_000
-const AUDIO_BITRATE_K = 96
+const AUDIO_BITRATE_K = 72
 const DLP_FORMAT = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
 async function acquireMediaDLP(args: AcquisitionerArgs): Promise<Error | BufferAndFiletype[]> {
   const mediaMetadata = await getMediaMetadataDLP(args)
@@ -176,6 +177,7 @@ async function acquireMediaDLP(args: AcquisitionerArgs): Promise<Error | BufferA
   if (targetVideoBitrateK <= 0)
     return new Error(`media can't fit within 10MB at a reasonable audio quality.`)
 
+  await appendTextToStatus(args.liveStatusThing, 'downloading and transcoding video')
   const dlpCommand = `yt-dlp '${args.url}' --format '${DLP_FORMAT}' ${clipArg} --playlist-items 1 --output -`
   const ffmpegCommand = `ffmpeg -i pipe:0 -c:v libx264 -preset veryfast -b:v ${targetVideoBitrateK}k -c:a aac -b:a ${AUDIO_BITRATE_K}k -movflags +frag_keyframe+empty_moov -f mp4 pipe:1`
   const downloadShellResp = await liveStatusShell(args.liveStatusThing, `${dlpCommand} | ${ffmpegCommand}`, true)
