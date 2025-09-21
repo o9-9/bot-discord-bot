@@ -1,7 +1,6 @@
 import type { CommandInteraction, CreateApplicationCommandOptions, File as DiscordFile } from 'oceanic.js'
 import { Buffer } from 'node:buffer'
-import { readdir } from 'node:fs/promises'
-import { $, file, randomUUIDv7 } from 'bun'
+import { $, randomUUIDv7 } from 'bun'
 import _ from 'lodash'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, MessageFlags } from 'oceanic.js'
 import tryCatch from 'try-catch'
@@ -104,7 +103,7 @@ async function acquireRedditMedia(args: AcquisitionerArgs): Promise<Error | Buff
   if (postId === null)
     return new Error('failed to acquire reddit post id')
 
-  const postData: any | null = await fetch(`https://api.reddit.com/${postId}.json`)
+  const postData: any | null = await fetch(`https://api.reddit.com/${postId}.json`, { headers: { 'User-Agent': 'Cassie DiscordBot by CodeF53' } })
     .then<any>(r => r.json())
     .then(r => r[0].data.children[0].data)
     .catch(() => null)
