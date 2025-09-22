@@ -76,10 +76,11 @@ export async function handler(interaction: CommandInteraction) {
   }
 
   await appendTextToStatus(liveStatusThing, 'uploading media to discord!')
-  const chunkedFileEmbeds: DiscordFile[][] = _.chunk(fileBuffers.map(({ buffer, filetype }) => ({ name: `${randomUUIDv7('base64url')}.${filetype}`, contents: buffer })))
+  const fileEmbeds = fileBuffers.map(({ buffer, filetype }) => ({ name: `${randomUUIDv7('base64url')}.${filetype}`, contents: buffer }))
+  const chunkedFileEmbeds: DiscordFile[][] = _.chunk(fileEmbeds, 10)
   await interaction.editOriginal({ content: ' ', files: chunkedFileEmbeds.shift()! })
-  for (const fileBufferChunk of chunkedFileEmbeds)
-    await interaction.reply({ files: fileBufferChunk })
+  for (const fileEmbedChunk of chunkedFileEmbeds)
+    await interaction.reply({ files: fileEmbedChunk })
 
   await appendTextToStatus(liveStatusThing, 'done! (deleting status message in 20 seconds)')
   setTimeout(() => interaction.deleteFollowup(statusMessageId), 20_000)
