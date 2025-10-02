@@ -117,7 +117,8 @@ async function acquireRedditMedia(args: AcquisitionerArgs): Promise<Error | Buff
 
   if (postData.is_gallery) {
     const imageIds: string[] = postData.gallery_data.items.map((item: { media_id: string }) => item.media_id)
-    const imageUrls = imageIds.map(id => postData.media_metadata[id].s.u.replace('preview', 'i').replace(/\?.*$/, ''))
+    const sliceStart = Math.max(0, args.cutSegments.start - 1)
+    const imageUrls = imageIds.slice(sliceStart, args.cutSegments.end).map(id => postData.media_metadata[id].s.u.replace('preview', 'i').replace(/\?.*$/, ''))
     await appendTextToStatus(args.liveStatusThing, `downloading ${imageUrls.length} gallery items`)
     const imageBuffers = await Promise.all([...imageUrls.map(url => imgUrlToBuffer(url))])
     if (imageBuffers.some(Error.isError))
