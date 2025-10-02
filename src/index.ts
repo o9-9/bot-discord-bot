@@ -1,8 +1,6 @@
 import type { CommandInteraction, CreateApplicationCommandOptions } from 'oceanic.js'
-import { join as joinPath } from 'node:path'
-import { env } from 'bun'
+import { env, Glob } from 'bun'
 import { Client, InteractionContextTypes, InteractionTypes } from 'oceanic.js'
-import rra from 'recursive-readdir-async'
 
 const { TOKEN, TEST } = env
 
@@ -17,9 +15,7 @@ console.log('Initialized as', client.user.tag)
 const commands: {
   description: CreateApplicationCommandOptions
   handler: (interaction: CommandInteraction) => Promise<void> | void
-}[] = await rra.list(joinPath(__dirname, 'commands')) // recursively get the path to every command in ./commands
-  .then(r => r.map((file: any) => file.fullnameb.toString())) // for some reason this HATES giving the real file names
-  .then((fileNames: string[]) => Promise.all(fileNames.map(f => import(f)))) // import each command file
+}[] = await Promise.all(Iterator.from(new Glob('./commands/**.ts').scanSync('src')).map(f => import(f)).toArray()) // no pipe operator stinky (please just give me elixir with a tiny runtime and packages for scripting)
 
 // modify descriptions
 commands.forEach(({ description }) => {
