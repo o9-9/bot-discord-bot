@@ -1,0 +1,18 @@
+on: push
+
+jobs:
+  update_server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull changes and restart bot service
+        env:
+          PASSWORD: ${{ secrets.PASSWORD }}
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.HOST }}
+          username: cassie
+          key: ${{ secrets.SSH_PRIV_KEY }}
+          port: ${{ secrets.PORT }}
+          envs: PASSWORD
+          script: echo $PASSWORD | sudo -S nixos-rebuild switch
+
