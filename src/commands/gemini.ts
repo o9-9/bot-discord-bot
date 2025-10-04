@@ -82,7 +82,7 @@ export async function handler(interaction: CommandInteraction) {
   if (thinkingBudget > 0)
     respText = `-# thought for ${runtime} seconds\n${respText}`
 
-  const replyChunks = split2000(respText)
+  const replyChunks = split2000(respText.replaceAll(/(?<!\n)```/g, '\n```'))
   await interaction.reply({ content: replyChunks.shift() })
   for (const chunk of replyChunks)
     await interaction.createFollowup({ content: chunk })
