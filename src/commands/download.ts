@@ -1,13 +1,12 @@
 import type { CommandInteraction, CreateApplicationCommandOptions, File as DiscordFile } from 'oceanic.js'
-import { Buffer } from 'node:buffer'
 import { $, randomUUIDv7 } from 'bun'
 import _ from 'lodash'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, MessageFlags } from 'oceanic.js'
 import tryCatch from 'try-catch'
 import { codeBlock, last2000 } from '../utils/formatting'
+import { downloadImage } from '../utils/misc'
 
 const { EPHEMERAL } = MessageFlags
-interface BufferAndFiletype { buffer: Buffer, filetype: string }
 interface LiveStatusThing { interaction: CommandInteraction, statusMessageId: string }
 interface AcquisitionerArgs {
   url: string
@@ -60,7 +59,7 @@ export async function handler(interaction: CommandInteraction) {
     .then(({ message }) => message.id)
   const liveStatusThing = { interaction, statusMessageId }
 
-  const fileBuffers: BufferAndFiletype[] = []
+  const files: DiscordFile[] = []
 
   let mediaAcquisitioner = acquireMediaDLP
   if (url.includes('reddit.com') || url.includes('redd.it'))
@@ -72,14 +71,13 @@ export async function handler(interaction: CommandInteraction) {
     return appendTextToStatus(liveStatusThing, `\n⚠️ ${acquisitionerResult.message}`)
   }
   else {
-    fileBuffers.push(...acquisitionerResult)
+    files.push(...acquisitionerResult)
   }
 
   await appendTextToStatus(liveStatusThing, 'uploading media to discord!')
-  const fileEmbeds = fileBuffers.map(({ buffer, filetype }) => ({ name: `${randomUUIDv7('base64url')}.${filetype}`, contents: buffer }))
-  const chunkedFileEmbeds: DiscordFile[][] = _.chunk(fileEmbeds, 10)
-  await interaction.editOriginal({ content: ' ', files: chunkedFileEmbeds.shift()! })
-  for (const fileEmbedChunk of chunkedFileEmbeds)
+  const chunkedFiles: DiscordFile[][] = _.chunk(files, 10)
+  await interaction.editOriginal({ content: ' ', files: chunkedFiles.shift()! })
+  for (const fileEmbedChunk of chunkedFiles)
     await interaction.reply({ files: fileEmbedChunk })
 
   await appendTextToStatus(liveStatusThing, 'done! (deleting status message in 20 seconds)')
@@ -87,7 +85,7 @@ export async function handler(interaction: CommandInteraction) {
 }
 
 // fix for reddit galleries & gifs
-async function acquireRedditMedia(args: AcquisitionerArgs): Promise<Error | BufferAndFiletype[]> {
+async function acquireRedditMedia(args: AcquisitionerArgs): Promise<Error | DiscordFile[]> {
   await appendTextToStatus(args.liveStatusThing, 'acquiring reddit post metadata')
 
   // handle reddit share urls, ex: https://reddit.com/r/.../s/...
@@ -120,15 +118,15 @@ async function acquireRedditMedia(args: AcquisitionerArgs): Promise<Error | Buff
     const sliceStart = Math.max(0, args.cutSegments.start - 1)
     const imageUrls = imageIds.slice(sliceStart, args.cutSegments.end).map(id => postData.media_metadata[id].s.u.replace('preview', 'i').replace(/\?.*$/, ''))
     await appendTextToStatus(args.liveStatusThing, `downloading ${imageUrls.length} gallery items`)
-    const imageBuffers = await Promise.all([...imageUrls.map(url => imgUrlToBuffer(url))])
+    const imageBuffers = await Promise.all([...imageUrls.map(downloadImage)])
     if (imageBuffers.some(Error.isError))
       return new Error('failed to download gallery images')
-    return imageBuffers as BufferAndFiletype[]
+    return imageBuffers as DiscordFile[]
   }
 
   if (postData.url.includes('i.redd.it')) {
     await appendTextToStatus(args.liveStatusThing, 'downloading post image')
-    const buffer = await imgUrlToBuffer(postData.url)
+    const buffer = await downloadImage(postData.url)
     if (Error.isError(buffer))
       return new Error('failed to download image')
     return [buffer]
@@ -137,17 +135,11 @@ async function acquireRedditMedia(args: AcquisitionerArgs): Promise<Error | Buff
   return new Error('I don\'t think that reddit post has images or videos on it')
 }
 
-async function imgUrlToBuffer(url: string): Promise<BufferAndFiletype | Error> {
-  const arrayBuffer = await fetch(url).then(r => r.arrayBuffer()).catch(() => null)
-  if (arrayBuffer === null) return new Error('failed to download image')
-  return { buffer: Buffer.from(arrayBuffer), filetype: url.split('.').at(-1)! }
-}
-
 const MAX_FILE_SIZE = 10_000_000 // 10MB
 const TARGET_TOTAL_KB = (MAX_FILE_SIZE * 0.8 * 8) / 1_000
 const AUDIO_BITRATE_K = 72
 const DLP_FORMAT = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best'
-async function acquireMediaDLP(args: AcquisitionerArgs): Promise<Error | BufferAndFiletype[]> {
+async function acquireMediaDLP(args: AcquisitionerArgs): Promise<Error | DiscordFile[]> {
   const mediaMetadata = await getMediaMetadataDLP(args)
   if (Error.isError(mediaMetadata))
     return mediaMetadata
@@ -165,11 +157,11 @@ async function acquireMediaDLP(args: AcquisitionerArgs): Promise<Error | BufferA
     const downloadShellResp = await liveStatusShell(args.liveStatusThing, `yt-dlp '${args.url}' --format 'bestaudio/best' ${clipArg} --playlist-items 1 --output -`, true)
     if (downloadShellResp.exitCode !== 0)
       return new Error('failed to download audio with yt-dlp')
-    const buffer = downloadShellResp.stdout
-    if (buffer.length > MAX_FILE_SIZE)
+    const contents = downloadShellResp.stdout
+    if (contents.length > MAX_FILE_SIZE)
       return new Error('output too big (>10MB)')
     const filetype = mediaMetadata.ext ?? 'bin'
-    return [{ buffer, filetype }]
+    return [{ contents, name: `${randomUUIDv7('base64url')}.${filetype}` }]
   }
 
   // calculate target bitrate
@@ -184,10 +176,10 @@ async function acquireMediaDLP(args: AcquisitionerArgs): Promise<Error | BufferA
   const downloadShellResp = await liveStatusShell(args.liveStatusThing, `${dlpCommand} | ${ffmpegCommand}`, true)
   if (downloadShellResp.exitCode !== 0)
     return new Error(`download/transcode failed\n${codeBlock(downloadShellResp.stderr.toString())}`)
-  const buffer = downloadShellResp.stdout
-  if (buffer.length > MAX_FILE_SIZE)
-    return new Error(`transcoded output is still too big (${(buffer.length / 1_000_000).toFixed(2)}MB)`)
-  return [{ buffer, filetype: 'mp4' }]
+  const contents = downloadShellResp.stdout
+  if (contents.length > MAX_FILE_SIZE)
+    return new Error(`transcoded output is still too big (${(contents.length / 1_000_000).toFixed(2)}MB)`)
+  return [{ contents, name: `${randomUUIDv7('base64url')}.mp4` }]
 }
 
 async function getMediaMetadataDLP(args: AcquisitionerArgs): Promise<any | Error> {
