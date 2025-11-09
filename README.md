@@ -19,10 +19,14 @@ bun start
 - `query`: google image search query
 - `count`: number of images to return (number between 1-10, defaults to 5)
 
+### `/dictionary`
+- `term`: word/term to define, uses Merriam-Webster's dictionary
+
 ## usage on a server (NixOS)
 Create `.env` (`cp .env.example .env`) and fill in relevant values:
 - `TOKEN`: from https://discord.com/developers/applications
 - `GEMINI_KEY`: from https://aistudio.google.com/app/projects
+- `DICTIONARY_KEY`: from https://www.dictionaryapi.com/register/index
 - `PRO_USER_IDS`: comma separated list of discord user ids that you want to be able to use the highest tier of thinking on `/gemini`
 - `TEST`: present with any value if you want all commands to be prefixed with `test_`, helpful for differentiating your development build from production
 
