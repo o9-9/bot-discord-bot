@@ -57,7 +57,7 @@ export async function handleComponentInteraction(interaction: ComponentInteracti
   const targetPage = Number(targetPageStr!)
   const definitions = definitionCache.get(term!)
   if (definitions === undefined)
-    return interaction.createFollowup({ flags: MessageFlags.EPHEMERAL, content: 'failed to get pagination context, try doing a new /dictionary and interacting with that one' })
+    return interaction.createFollowup({ flags: MessageFlags.EPHEMERAL, content: 'failed to get pagination context, try doing a new `/dictionary` and interacting with that one' })
 
   interaction.editOriginal({
     content: definitions?.[targetPage],
