@@ -1,9 +1,4 @@
 # discord-bot
-```bash
-bun install
-bun start
-```
-
 ## Features
 ### `/gemini`
 - `input`: what you want to ask / say to gemini
@@ -26,14 +21,27 @@ bun start
 ### `/urbandictionary`
 - identical to `/dictionary`, but uses https://unofficialurbandictionaryapi.com/
 
-## usage on a server (NixOS)
+### `/wolfram`
+- `query` query to compute via wolfram alpha
+
+## Setup:
 Create `.env` (`cp .env.example .env`) and fill in relevant values:
 - `TOKEN`: from https://discord.com/developers/applications
 - `GEMINI_KEY`: from https://aistudio.google.com/app/projects
-- `DICTIONARY_KEY`: from https://www.dictionaryapi.com/register/index
+- `DICTIONARY_KEY`: from https://www.dictionaryapi.com/register/index (apply for usage of "Collegiate Dictionary")
+- `WOLFRAM_KEY`: from https://developer.wolframalpha.com/access (make your app use the "short answers api")
 - `PRO_USER_IDS`: comma separated list of discord user ids that you want to be able to use the highest tier of thinking on `/gemini`
 - `TEST`: present with any value if you want all commands to be prefixed with `test_`, helpful for differentiating your development build from production
 
+```bash
+bun install
+```
+
+## Running
+```bash
+bun start
+```
+Or for a NixOS server:
 ```nix
 {
   systemd.services.discord-bot = {
