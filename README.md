@@ -23,6 +23,9 @@ bun start
 - `term`: word/term to define, uses Merriam-Webster's dictionary
 - use `<` and `>` buttons attached to message to browse different definitions
 
+### `/urbandictionary`
+- identical to `/dictionary`, but uses https://unofficialurbandictionaryapi.com/
+
 ## usage on a server (NixOS)
 Create `.env` (`cp .env.example .env`) and fill in relevant values:
 - `TOKEN`: from https://discord.com/developers/applications
