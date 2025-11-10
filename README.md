@@ -21,6 +21,7 @@ bun start
 
 ### `/dictionary`
 - `term`: word/term to define, uses Merriam-Webster's dictionary
+- use `<` and `>` buttons attached to message to browse different definitions
 
 ## usage on a server (NixOS)
 Create `.env` (`cp .env.example .env`) and fill in relevant values:
