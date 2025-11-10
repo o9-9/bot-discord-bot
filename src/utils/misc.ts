@@ -26,6 +26,13 @@ export function paginationButtons(currentIndex: number, arrayLen: number, pagina
     },
     {
       type: ComponentTypes.BUTTON,
+      style: ButtonStyles.PRIMARY,
+      customID: 'page number',
+      label: `${currentIndex + 1} / ${arrayLen}`,
+      disabled: true,
+    },
+    {
+      type: ComponentTypes.BUTTON,
       style: ButtonStyles.SECONDARY,
       customID: `setPage|${paginationLookup}|${currentIndex + 1}`,
       label: '>',
