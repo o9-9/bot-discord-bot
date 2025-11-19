@@ -109,6 +109,13 @@ async function acquireRedditMedia(args: AcquisitionerArgs): Promise<Error | Disc
   if (postData === null)
     return new Error('failed to get reddit post metadata')
 
+  // crossposts
+  if (Object.hasOwn(postData, 'crosspost_parent_list')) {
+    const url = `https://reddit.com${postData.crosspost_parent_list[0].permalink}`
+    console.log(`looking into crosspost origin ${url}`)
+    return acquireRedditMedia({ ...args, url })
+  }
+
   // fallback on yt-dlp for reddit videos
   if (postData.is_video)
     return acquireMediaDLP(args)
