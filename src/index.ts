@@ -1,4 +1,4 @@
-import type { CommandInteraction, ComponentInteraction, CreateApplicationCommandOptions } from 'oceanic.js'
+import type { AutocompleteInteraction, CommandInteraction, ComponentInteraction, CreateApplicationCommandOptions } from 'oceanic.js'
 import { env, Glob } from 'bun'
 import { Client, InteractionContextTypes, InteractionTypes } from 'oceanic.js'
 
@@ -16,6 +16,7 @@ interface CommandDefinition {
   description: CreateApplicationCommandOptions
   handler: (interaction: CommandInteraction) => Promise<void> | void
   handleComponentInteraction?: (interaction: ComponentInteraction) => Promise<void> | void
+  handleAutocompleteInteraction?: (interaction: AutocompleteInteraction) => Promise<void> | void
 }
 
 const commands: CommandDefinition[] = await Promise.all(Iterator.from(new Glob('./commands/**.ts').scanSync('src')).map(f => import(f)).toArray()) // no pipe operator stinky (please just give me elixir with a tiny runtime and packages for scripting)
@@ -36,6 +37,8 @@ client.on('interactionCreate', (interaction) => {
       return handleCommandInteraction(interaction)
     case InteractionTypes.MESSAGE_COMPONENT:
       return handleComponentInteraction(interaction)
+    case InteractionTypes.APPLICATION_COMMAND_AUTOCOMPLETE:
+      return handleAutocompleteInteraction(interaction)
     default:
       return console.error(`unhandled interaction type: ${interaction.type}`)
   }
@@ -66,4 +69,13 @@ function handleComponentInteraction(interaction: ComponentInteraction) {
   if (usedCommand.handleComponentInteraction === undefined)
     return console.error(`no component interaction handler for ${commandName} (received interaction ${interaction.data.customID})`)
   usedCommand.handleComponentInteraction(interaction)
+}
+
+function handleAutocompleteInteraction(interaction: AutocompleteInteraction) {
+  const commandName = interaction.data.name
+  const usedCommand = findCommand(interaction.data.name)
+  if (!usedCommand) return
+  if (usedCommand.handleAutocompleteInteraction === undefined)
+    return console.error(`no autocomplete handler for ${commandName} (received autocomplete request for option ${interaction.data.options.getFocused()?.name})`)
+  usedCommand.handleAutocompleteInteraction(interaction)
 }

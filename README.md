@@ -24,6 +24,11 @@
 ### `/wolfram`
 - `query` query to compute via wolfram alpha
 
+### `/translate`
+- `text` text to translate
+- `target-language` language to translate to
+- `source-language` language to translate from (optional)
+
 ## Setup:
 Create `.env` (`cp .env.example .env`) and fill in relevant values:
 - `TOKEN`: from https://discord.com/developers/applications
