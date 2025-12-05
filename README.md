@@ -30,6 +30,9 @@
 - `target-language` language to translate to
 - `source-language` language to translate from (optional)
 
+### "Translate Message" action
+- right click a message and click "Translate Message" to have it translated to english
+
 ## Setup:
 Create `.env` (`cp .env.example .env`) and fill in relevant values:
 - `TOKEN`: from https://discord.com/developers/applications
