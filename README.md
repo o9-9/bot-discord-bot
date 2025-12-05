@@ -12,7 +12,8 @@
 
 ### `/image`
 - `query`: google image search query
-- `count`: number of images to return (number between 1-10, defaults to 5)
+- 5 images are displayed from google search results
+- buttons let you select one image to display from the results
 
 ### `/dictionary`
 - `term`: word/term to define, uses Merriam-Webster's dictionary
