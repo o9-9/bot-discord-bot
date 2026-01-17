@@ -20,7 +20,7 @@ export const description: CreateApplicationCommandOptions = {
       name: 'target-language',
       description: 'language to translate to',
       type: ApplicationCommandOptionTypes.STRING,
-      required: true,
+      required: false,
       autocomplete: true,
     },
     {
@@ -36,7 +36,7 @@ export const description: CreateApplicationCommandOptions = {
 export async function handler(interaction: CommandInteraction) {
   const text = interaction.data.options.getStringOption('text', true)!.value
   const sourceLanguage = interaction.data.options.getStringOption('source-language')?.value as LangCode | undefined
-  const targetLanguage = interaction.data.options.getStringOption('target-language', true)!.value as LangCode
+  const targetLanguage = (interaction.data.options.getStringOption('target-language')!.value ?? 'en') as LangCode
   interaction.defer()
 
   const translation = await translateText({ text, sourceLanguage, targetLanguage })
