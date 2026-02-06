@@ -1,6 +1,6 @@
 import type { CommandInteraction, ComponentInteraction, CreateApplicationCommandOptions } from 'oceanic.js'
 import type { DiscordFile } from '../utils/misc'
-import gis from 'async-g-i-s'
+import { bingImages } from '@f53/bing-image-scraper'
 import { ApplicationCommandOptionTypes, ApplicationCommandTypes, ButtonStyles, ComponentTypes, MessageFlags } from 'oceanic.js'
 import { downloadImage } from '../utils/misc'
 
@@ -24,20 +24,31 @@ export async function handler(interaction: CommandInteraction) {
 
   interaction.reply({ content: `searching for images of "${query}"` })
 
-  const urls = await gis(query).then(r => r.slice(0, 5).map(i => i.url))
+  const bingResp = await bingImages(query, { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36' })
+  if (Error.isError(bingResp))
+    return interaction.editOriginal({ content: 'failed to scrape images' })
+  const urls = new Set(bingResp.map(i => i.direct))
 
-  interaction.editOriginal({ content: `downloading 5 images` })
+  interaction.editOriginal({ content: 'downloading images' })
 
-  const imageBuffers = await Promise.all([...urls.map(downloadImage)])
-  if (imageBuffers.some(Error.isError))
-    return interaction.editOriginal({ content: 'download failed, sorry' })
+  const imgs: { url: string, file: DiscordFile }[] = []
+  for (const url of urls) {
+    if (imgs.length >= 5) break
+
+    const file = await downloadImage(url)
+    if (Error.isError(file)) continue
+    imgs.push({ url, file })
+  }
+
+  if (imgs.length === 0)
+    return interaction.editOriginal({ content: 'all downloads failed, sorry' })
 
   const message = await interaction.editOriginal({
     content: '',
-    files: imageBuffers as DiscordFile[],
+    files: imgs.map(i => i.file) as DiscordFile[],
     components: [{
       type: ComponentTypes.ACTION_ROW,
-      components: urls.map((_, i) => ({
+      components: imgs.map((_, i) => ({
         type: ComponentTypes.BUTTON,
         style: ButtonStyles.SECONDARY,
         customID: `setImage|${i}`,
@@ -46,7 +57,7 @@ export async function handler(interaction: CommandInteraction) {
     }],
   })
 
-  urlMemory.set(message.id, urls)
+  urlMemory.set(message.id, imgs.map(i => i.url))
 }
 
 export async function handleComponentInteraction(interaction: ComponentInteraction) {

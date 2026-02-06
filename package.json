@@ -10,10 +10,10 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@f53/bing-image-scraper": "^1.0.0",
     "@google/genai": "^1.21.0",
     "@types/lodash": "^4.17.20",
     "@types/try-catch": "^3.0.2",
-    "async-g-i-s": "^1.5.5",
     "lodash": "^4.17.21",
     "oceanic": "^0.0.1",
     "oceanic.js": "^1.13.0",

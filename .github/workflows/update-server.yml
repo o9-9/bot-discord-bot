@@ -15,4 +15,3 @@ jobs:
           port: ${{ secrets.PORT }}
           envs: PASSWORD
           script: echo $PASSWORD | sudo -S nixos-rebuild switch
-
